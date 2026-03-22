@@ -44,3 +44,132 @@ No separate `npm install` or build process is required.
 - [x] UX improvements (shortcut deletion, inline editing, canvas expansion, etc.)
 - [ ] **Python FastAPI server integration (In Progress):** Send on-screen JSON state (`nodes`, `edges`) to the backend
 - [ ] **AWS Bedrock pipeline construction:** Parse JSON to automatically generate an `architecture.md` document including ASCII diagrams
+
+
+## Result_example
+~~~
+# Workflow Architecture Document
+
+---
+
+## 1. Overview
+
+본 문서는 UI 캔버스에서 구성된 Agent 워크플로우의 위상(Topology) 데이터를 분석하여, 시스템 구조를 완벽하게 재현할 수 있도록 작성된 아키텍처 문서입니다.
+
+---
+
+## 2. Workflow Architecture Diagram
+
+```
+                    ┌─────────────────┐
+                    │   Start_node    │
+                    └────────┬────────┘
+                             │
+               ┌─────────────┴─────────────┐
+               │                           │
+               ▼                           ▼
+     ┌──────────────────┐       ┌──────────────────┐
+     │    [Agent 1]     │       │    [Agent 3]     │
+     └────────┬─────────┘       └────────┬─────────┘
+              │                          │
+              └──────────┬───────────────┘
+                         │
+                         ▼
+               ┌──────────────────┐
+               │    [Agent 2]     │
+               └────────┬─────────┘
+                        │
+                        ▼
+               ┌──────────────────┐
+               │    End_node      │
+               └──────────────────┘
+```
+
+---
+
+## 3. Node Definitions (노드 정의)
+
+| Node ID      | Label       | Type      | 설명                                      |
+|--------------|-------------|-----------|-------------------------------------------|
+| `start_node` | Start_node  | 시작 노드  | 워크플로우의 진입점. 두 개의 병렬 분기를 트리거 |
+| `node_1`     | [Agent 1]   | 에이전트   | Start_node로부터 분기된 첫 번째 처리 에이전트 |
+| `node_3`     | [Agent 3]   | 에이전트   | Start_node로부터 분기된 두 번째 처리 에이전트 |
+| `node_2`     | [Agent 2]   | 에이전트   | Agent 1과 Agent 3의 결과를 수렴하는 합류 에이전트 |
+| `end_node`   | End_node    | 종료 노드  | 워크플로우의 최종 종료점                    |
+
+---
+
+## 4. Edge Definitions (연결선 정의)
+
+| Edge # | From         | To           | 설명                                  |
+|--------|--------------|--------------|---------------------------------------|
+| E-01   | `start_node` | `node_1`     | 시작 → Agent 1 (병렬 분기 #1)          |
+| E-02   | `start_node` | `node_3`     | 시작 → Agent 3 (병렬 분기 #2)          |
+| E-03   | `node_1`     | `node_2`     | Agent 1 → Agent 2 (합류 입력 #1)      |
+| E-04   | `node_3`     | `node_2`     | Agent 3 → Agent 2 (합류 입력 #2)      |
+| E-05   | `node_2`     | `end_node`   | Agent 2 → 종료 (최종 출력)             |
+
+---
+
+## 5. Data Flow Analysis (데이터 흐름 분석)
+
+### 5-1. 실행 단계 (Execution Phases)
+
+```
+Phase 1 │ [Start_node] 실행 → 두 개의 하위 에이전트로 동시 분기
+────────┼──────────────────────────────────────────────────────────
+Phase 2 │ [Agent 1] 과 [Agent 3] 병렬(Parallel) 실행
+────────┼──────────────────────────────────────────────────────────
+Phase 3 │ [Agent 2] 에서 두 에이전트의 결과 수렴(Merge/Join)
+────────┼──────────────────────────────────────────────────────────
+Phase 4 │ [End_node] 에서 워크플로우 종료
+```
+
+### 5-2. 분기 패턴 (Branching Pattern)
+
+- **패턴 유형**: `Fork → Join` (분기 후 합류)
+- **분기 지점 (Fork Point)**: `Start_node` → 1:2 분기
+- **합류 지점 (Join Point)**: `node_2 (Agent 2)` ← 2:1 합류
+- **병렬 처리 경로**:
+  - **Path A**: `Start_node` → `[Agent 1]` → `[Agent 2]`
+  - **Path B**: `Start_node` → `[Agent 3]` → `[Agent 2]`
+
+### 5-3. 의존성 그래프 (Dependency Graph)
+
+```
+Start_node  (선행 조건 없음)
+├── [Agent 1]  depends on → Start_node
+├── [Agent 3]  depends on → Start_node
+└── [Agent 2]  depends on → [Agent 1] AND [Agent 3]
+        └── End_node  depends on → [Agent 2]
+```
+
+---
+
+## 6. Critical Path (임계 경로)
+
+> 워크플로우의 전체 실행 시간을 결정하는 가장 긴 경로입니다.
+
+```
+Start_node ──▶ [Agent 1 or Agent 3 중 더 느린 쪽] ──▶ [Agent 2] ──▶ End_node
+```
+
+- Agent 1과 Agent 3은 **병렬 실행**되므로, 둘 중 **처리 시간이 더 긴 에이전트**가 전체 임계 경로를 결정합니다.
+- Agent 2는 반드시 **두 에이전트가 모두 완료된 후** 실행되어야 합니다. (동기화 장벽, Synchronization Barrier)
+
+---
+
+## 7. Architectural Notes (아키텍처 주의사항)
+
+| # | 항목 | 내용 |
+|---|------|------|
+| 1 | **병렬성** | Agent 1과 Agent 3은 독립적으로 실행 가능하며, 상호 의존성이 없습니다. |
+| 2 | **합류 조건** | Agent 2는 Agent 1과 Agent 3이 **모두 성공적으로 완료**되어야 실행됩니다. |
+| 3 | **단일 장애점** | Agent 2와 End_node는 단일 경로로, 해당 노드 실패 시 전체 워크플로우가 중단됩니다. |
+| 4 | **확장 가능성** | Start_node의 분기를 추가하여 N개의 병렬 에이전트로 수평 확장이 가능합니다. |
+
+---
+
+*본 문서는 JSON Topology 데이터를 기반으로 자동 생성되었습니다.*
+
+~~~
