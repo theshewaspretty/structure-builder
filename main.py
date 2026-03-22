@@ -33,7 +33,7 @@ try:
     # os.getenv를 통해 .env 파일의 값을 안전하게 주입합니다.
     bedrock_client = boto3.client(
         service_name='bedrock-runtime', 
-        region_name=os.getenv("AWS_REGION", "ap-northeast-2"),
+        region_name=os.getenv("AWS_REGION"),
         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
     )
@@ -93,7 +93,7 @@ async def generate_architecture_documentation(data: FlowData):
     """
 
     # .env에서 모델 ID를 동적으로 가져옵니다.
-    model_id = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+    model_id = os.getenv("BEDROCK_MODEL_ID")
 
     body = json.dumps({
         "anthropic_version": "bedrock-2023-05-31",
