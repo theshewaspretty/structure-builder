@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>structure builder for markdown</title>
+  <style>
+    /* 1. 캔버스와 도화지를 확실한 4000px 크기로 강제 고정 (버그 수정됨) */
+    body { margin: 0; padding: 0; background-color: #f4f4f4; overflow: auto; font-family: sans-serif; }
+    #canvas { width: 4000px; height: 4000px; position: relative; background-color: #f4f4f4; }
+    
+    /* SVG 레이어: 선이 잘려보이지 않도록 100% (4000px) 꽉 채움 */
+    #svg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+    
+    /* 연결선 스타일 */
+    .edge-path { pointer-events: visibleStroke; cursor: pointer; transition: stroke 0.2s, stroke-width 0.2s; }
+    .edge-path:hover { stroke: #d32f2f !important; stroke-width: 4 !important; }
+
+    /* 기본 에이전트 노드 */
+    .agent-node {
+      position: absolute; width: 180px; min-height: 60px;
+      background-color: white; border: 2px solid #333; border-radius: 6px;
+      cursor: grab; display: flex; align-items: center; justify-content: center; text-align: center;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.1); user-select: none; z-index: 2;
+      font-weight: bold; font-size: 14px; padding: 10px; box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+    .agent-node:active { cursor: grabbing; box-shadow: 4px 4px 10px rgba(0,0,0,0.15); }
+    .agent-node[contenteditable="true"] { cursor: text; border-color: #1976d2; outline: none; background-color: #e3f2fd; }
+    
+    /* 박스 삭제 피드백 */
+    .agent-node.delete-ready:hover { border-color: #d32f2f; background-color: #ffebee; cursor: pointer; }
+    
+    /* 특수 노드 스타일 */
+    .start-node { border-color: #2e7d32; background-color: #e8f5e9; color: #2e7d32; }
+    .end-node { border-color: #c62828; background-color: #ffebee; color: #c62828; }
+
+    /* 포트(연결점) */
+    .port {
+      position: absolute; width: 12px; height: 12px;
+      background-color: white; border: 2px solid #555; border-radius: 50%;
+      cursor: crosshair; z-index: 3; transition: all 0.2s;
+    }
+    .port:hover { background-color: #1976d2; border-color: #1976d2; transform: scale(1.3); }
+    .port-in { top: -8px; left: calc(50% - 7px); } 
+    .port-out { bottom: -8px; left: calc(50% - 7px); } 
+
+    /* UI 요소 (화면 스크롤을 내려도 항상 보이게 고정) */
+    #help-text {
+      position: fixed; bottom: 20px; left: 20px;
+      background-color: rgba(0,0,0,0.8); color: white; padding: 12px 18px;
+      border-radius: 5px; pointer-events: none; font-size: 14px; z-index: 10; line-height: 1.6;
+    }
+    
+    .top-controls { position: fixed; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 10; }
+    
+    .btn {
+      color: white; border: none; padding: 10px 20px;
+      font-size: 14px; font-weight: bold; border-radius: 5px; cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    #export-btn { background-color: #1976d2; }
+    #export-btn:hover { background-color: #115293; }
+    #export-btn:disabled { background-color: #999; cursor: not-allowed; }
+    
+    #reset-btn { background-color: #d32f2f; }
+    #reset-btn:hover { background-color: #9a0007; }
+  </style>
+</head>
+<body>
+
+  <div class="top-controls">
+    <button id="reset-btn" class="btn">Reset Canvas</button>
+    <button id="export-btn" class="btn">Export to MD</button>
+  </div>
+  
+  <div id="help-text">
+    [조작 방법]<br>
+    - <b>박스 생성</b>: Mac Cmd(⌘) 또는 Ctrl + 빈 화면 클릭<br>
+    - <b>이름 변경</b>: 박스 더블클릭 (Enter로 저장)<br>
+    - <b>선 연결</b>: 아래쪽 점(Out) ➔ 다른 박스 위쪽 점(In)으로 드래그<br>
+    - <b>선/박스 삭제</b>: Mac Cmd(⌘) 또는 Ctrl + 선/박스 클릭
+  </div>
+
+  <div id="canvas">
+    <svg id="svg-layer">
+      <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+        </marker>
+      </defs>
+      <g id="edges-group"></g>
+      <path id="temp-path" stroke="#1976d2" stroke-width="2" fill="none" stroke-dasharray="5,5" display="none" />
+    </svg>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const tempPath = document.getElementById('temp-path');
+    const edgesGroup = document.getElementById('edges-group');
+    const exportBtn = document.getElementById('export-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    
+    let nodeIdCounter = 1;
+    let nodesData = []; 
+    let edgesData = []; 
+
+    // 삭제 모드 시각적 효과 (Ctrl/Cmd 키 다운 감지)
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey) document.querySelectorAll('.agent-node').forEach(el => el.classList.add('delete-ready'));
+    });
+    document.addEventListener('keyup', (e) => {
+      if (!e.ctrlKey && !e.metaKey) document.querySelectorAll('.agent-node').forEach(el => el.classList.remove('delete-ready'));
+    });
+
+    // --- 1. 새 박스 생성 (강력한 클릭 감지 로직으로 수정됨) ---
+    // canvas 밖을 누르든 안을 누르든, 클릭한 곳이 '빈 공간'이면 박스 생성
+    document.addEventListener('mousedown', (e) => {
+      if ((e.ctrlKey || e.metaKey)) {
+        // 클릭한 곳이 기존 박스(agent-node)나 버튼(btn)이 아닐 때만 실행
+        if (!e.target.closest('.agent-node') && !e.target.closest('.btn')) {
+          const x = e.pageX - 90; 
+          const y = e.pageY - 30; 
+          createNode(x, y, `[Agent ${nodeIdCounter}]`, true, true, null);
+        }
+      }
+    });
+
+    // --- 2. 노드 생성 로직 ---
+    function createNode(x, y, label, hasInPort, hasOutPort, customClass) {
+      let nodeId = customClass ? label.toLowerCase() : `node_${nodeIdCounter++}`;
+
+      const nodeEl = document.createElement('div');
+      nodeEl.className = 'agent-node';
+      if (customClass) nodeEl.classList.add(customClass);
+      
+      nodeEl.id = nodeId;
+      nodeEl.style.left = `${x}px`;
+      nodeEl.style.top = `${y}px`;
+      nodeEl.innerText = label;
+
+      const nodeData = { id: nodeId, el: nodeEl, x, y, label };
+
+      // --- 박스 삭제 기능 ---
+      nodeEl.addEventListener('mousedown', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          e.stopPropagation(); 
+          
+          if (nodeId === 'start_node' || nodeId === 'end_node') {
+            alert("시작(Start)과 종료(End) 노드는 삭제할 수 없습니다.");
+            return;
+          }
+
+          if (confirm("이 에이전트 박스를 삭제하겠습니까? (연결된 선도 함께 삭제됩니다)")) {
+            nodeEl.remove(); // HTML 요소 삭제
+            nodesData = nodesData.filter(n => n.id !== nodeId); // 배열에서 삭제
+            
+            // 연결된 모든 선 삭제
+            const edgesToRemove = edgesData.filter(edge => edge.fromId === nodeId || edge.toId === nodeId);
+            edgesToRemove.forEach(edge => {
+              edge.pathEl.remove();
+            });
+            edgesData = edgesData.filter(edge => edge.fromId !== nodeId && edge.toId !== nodeId);
+          }
+        }
+      });
+
+      // 더블클릭 이름 변경
+      nodeEl.addEventListener('dblclick', (e) => {
+        e.stopPropagation(); 
+        nodeEl.setAttribute('contenteditable', 'true');
+        nodeEl.focus();
+        document.execCommand('selectAll', false, null);
+      });
+
+      nodeEl.addEventListener('blur', () => {
+        nodeEl.setAttribute('contenteditable', 'false');
+        nodeData.label = nodeEl.innerText; 
+      });
+      nodeEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          nodeEl.blur();
+        }
+      });
+
+      // 위/아래 포트 생성
+      if (hasInPort) {
+        const portIn = document.createElement('div');
+        portIn.className = 'port port-in';
+        portIn.dataset.nodeId = nodeId;
+        portIn.dataset.type = 'in';
+        nodeEl.appendChild(portIn);
+        nodeData.portIn = portIn;
+      }
+
+      if (hasOutPort) {
+        const portOut = document.createElement('div');
+        portOut.className = 'port port-out';
+        portOut.dataset.nodeId = nodeId;
+        portOut.dataset.type = 'out';
+        nodeEl.appendChild(portOut);
+        nodeData.portOut = portOut;
+        makeConnectable(portOut, 'out'); 
+      }
+
+      canvas.appendChild(nodeEl);
+      nodesData.push(nodeData);
+      makeDraggable(nodeData);
+    }
+
+    // --- 3. 드래그 앤 드롭 ---
+    function makeDraggable(nodeData) {
+      let isDragging = false;
+      let offX, offY;
+
+      nodeData.el.addEventListener('mousedown', (e) => {
+        if (e.target.classList.contains('port') || nodeData.el.getAttribute('contenteditable') === 'true' || (e.ctrlKey || e.metaKey)) return; 
+        
+        isDragging = true;
+        nodeData.el.style.zIndex = 4;
+        offX = e.pageX - nodeData.el.offsetLeft;
+        offY = e.pageY - nodeData.el.offsetTop;
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const x = e.pageX - offX;
+        const y = e.pageY - offY;
+        nodeData.el.style.left = `${x}px`;
+        nodeData.el.style.top = `${y}px`;
+        nodeData.x = x;
+        nodeData.y = y;
+        updateEdges(nodeData.id); 
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!isDragging) return;
+        isDragging = false;
+        nodeData.el.style.zIndex = 2;
+      });
+    }
+
+    // --- 4. 선 연결 및 삭제 로직 ---
+    let isDrawingLine = false;
+    let startPortData = null;
+
+    function makeConnectable(portEl, type) {
+      portEl.addEventListener('mousedown', (e) => {
+        if (type !== 'out' || (e.ctrlKey || e.metaKey)) return; 
+        e.stopPropagation(); 
+        
+        isDrawingLine = true;
+        startPortData = { nodeId: portEl.dataset.nodeId, type: type, el: portEl };
+
+        const rect = portEl.getBoundingClientRect();
+        // 절대 좌표 계산 (스크롤 대비)
+        const startX = rect.left + rect.width / 2 + window.scrollX;
+        const startY = rect.top + rect.height / 2 + window.scrollY;
+        tempPath.setAttribute('d', `M ${startX} ${startY} L ${startX} ${startY}`);
+        tempPath.style.display = 'block';
+      });
+    }
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDrawingLine) return;
+      const d = tempPath.getAttribute('d');
+      if (!d) return;
+      const parts = d.split(' ');
+      tempPath.setAttribute('d', `${parts[0]} ${parts[1]} ${parts[2]} L ${e.pageX} ${e.pageY}`);
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (!isDrawingLine) return;
+      isDrawingLine = false;
+      tempPath.style.display = 'none';
+
+      const targetPortEl = e.target;
+      if (targetPortEl && targetPortEl.classList.contains('port-in')) {
+        const fromNodeId = startPortData.nodeId;
+        const toNodeId = targetPortEl.dataset.nodeId;
+        
+        if(fromNodeId !== toNodeId) {
+            createEdge(fromNodeId, toNodeId);
+        }
+      }
+      startPortData = null;
+    });
+
+    function createEdge(fromId, toId) {
+      const edgeId = `edge_${fromId}_${toId}`;
+      if (edgesData.find(e => e.fromId === fromId && e.toId === toId)) return;
+
+      const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      pathEl.id = edgeId;
+      pathEl.setAttribute('stroke', '#333');
+      pathEl.setAttribute('stroke-width', '2');
+      pathEl.setAttribute('fill', 'none');
+      pathEl.setAttribute('marker-end', 'url(#arrowhead)'); 
+      pathEl.classList.add('edge-path'); 
+
+      // --- 특정 선 삭제 기능 ---
+      pathEl.addEventListener('mousedown', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          e.stopPropagation();
+          if (confirm("이 연결선을 삭제하겠습니까?")) {
+            pathEl.remove(); 
+            edgesData = edgesData.filter(edge => edge.id !== edgeId); 
+          }
+        }
+      });
+
+      edgesGroup.appendChild(pathEl);
+      edgesData.push({ id: edgeId, fromId, toId, pathEl });
+      drawEdgePath(fromId, toId, pathEl);
+    }
+
+    function updateEdges(nodeId) {
+      edgesData.filter(e => e.fromId === nodeId).forEach(e => drawEdgePath(e.fromId, e.toId, e.pathEl));
+      edgesData.filter(e => e.toId === nodeId).forEach(e => drawEdgePath(e.fromId, e.toId, e.pathEl));
+    }
+
+    function drawEdgePath(fromId, toId, pathEl) {
+      const fromNode = nodesData.find(n => n.id === fromId);
+      const toNode = nodesData.find(n => n.id === toId);
+
+      const outRect = fromNode.portOut.getBoundingClientRect();
+      const inRect = toNode.portIn.getBoundingClientRect();
+
+      const x1 = outRect.left + outRect.width / 2 + window.scrollX;
+      const y1 = outRect.top + outRect.height / 2 + window.scrollY;
+      const x2 = inRect.left + inRect.width / 2 + window.scrollX;
+      const y2 = inRect.top + inRect.height / 2 + window.scrollY;
+
+      const midY = y1 + (y2 - y1) / 2;
+      pathEl.setAttribute('d', `M ${x1} ${y1} V ${midY} H ${x2} V ${y2}`);
+    }
+
+    // --- 5. 다이어그램 초기화(Reset) ---
+    resetBtn.addEventListener('click', () => {
+      if (confirm("모든 다이어그램을 지우고 초기화하시겠습니까? (이 작업은 되돌릴 수 없습니다)")) {
+        nodesData = [];
+        edgesData = [];
+        nodeIdCounter = 1;
+        
+        document.querySelectorAll('.agent-node').forEach(el => el.remove());
+        edgesGroup.innerHTML = ''; 
+
+        initNodes();
+      }
+    });
+
+    // --- 6. Export 기능 ---
+    exportBtn.addEventListener('click', async () => {
+      if (edgesData.length === 0) {
+        alert("연결된 선이 없습니다. 노드를 먼저 연결해주세요.");
+        return;
+      }
+      const payload = {
+        nodes: nodesData.map(n => ({ id: n.id, label: n.label })),
+        edges: edgesData.map(e => ({ from: e.fromId, to: e.toId }))
+      };
+      exportBtn.innerText = "Agent 작동 중...";
+      exportBtn.disabled = true;
+
+      try {
+        const response = await fetch('http://localhost:8000/api/export-md', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error("서버 통신 오류");
+        const result = await response.json();
+        if (result.error) { alert("Bedrock API 에러: " + result.error); return; }
+
+        const blob = new Blob([result.markdown], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'agent_architecture.md';
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error(error);
+        alert("백엔드 서버(FastAPI)에 연결할 수 없습니다. 파이썬 서버가 실행 중인지 확인해주세요.");
+      } finally {
+        exportBtn.innerText = "Export to MD";
+        exportBtn.disabled = false;
+      }
+    });
+
+    // --- 초기화 함수 ---
+    function initNodes() {
+      const centerX = window.innerWidth / 2 - 90;
+      createNode(centerX, 50, 'Start_node', false, true, 'start-node');
+      createNode(centerX, window.innerHeight - 150, 'End_node', true, false, 'end-node');
+    }
+
+    initNodes();
+
+  </script>
+</body>
+</html>
