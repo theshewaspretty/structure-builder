@@ -16,9 +16,18 @@ Users can freely place and connect agent nodes in a web browser to design workfl
 
 No separate `npm install` or build process is required.
 
-1.  Download the `index.html` file.
+1.  Download the `index.html`, `main.py` file.
 2.  Open the file in a modern web browser like Chrome, Safari, or Edge.
 3.  Draw your diagram according to the controls below.
+4.  create `.env` include with boto3's bedrock token,region.
+5.  install packages
+```
+pip install requirements.txt
+```
+6.  excute `main.py` with command 
+```
+uvicorn main:app --reload --port 8000
+```
 
 ### ⌨️ Shortcuts & Control Guide
 
