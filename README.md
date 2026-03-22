@@ -1,50 +1,46 @@
 # 🛠️ AI Agent Workflow Builder (Canvas)
 
-이 프로젝트는 복잡한 프레임워크(React Flow 등) 없이 **순수 HTML, CSS, Vanilla JavaScript**만을 사용하여 구현된 노코드(No-code) 기반의 AI 에이전트 아키텍처 캔버스입니다. 
-아마 제조회사와 같은 raw data의 구분이 복잡하거나, AI agent 도입이 어려운 현업부서의 필요를 반여하고자 만들었습니다.
+This project is a No-code based AI Agent Architecture Canvas, implemented using pure HTML, CSS, and Vanilla JavaScript without relying on complex frameworks (such as React Flow). It was created to reflect the needs of field departments—such as those in manufacturing companies—where categorizing raw data is complex or adopting AI agents is difficult.
 
-사용자는 웹 브라우저 상에서 자유롭게 에이전트 노드를 배치하고 연결하여 워크플로우를 설계할 수 있으며, 
-최종적으로 설계된 다이어그램을 기반으로 AI(AWS Bedrock)를 통해 AI가 가장 정확하게 판단가능하고 이해를 잘 하는 구조화된 마크다운(.md) 및 ASCII 아키텍처 문서를 자동 생성하는 것을 목표로 합니다.
+Users can freely place and connect agent nodes in a web browser to design workflows. The ultimate goal is to automatically generate structured Markdown (`.md`) and ASCII architecture documents via AI (AWS Bedrock) based on the designed diagram, formatted in a way that AI can most accurately interpret and understand.
 
-## ✨ 주요 기능 (Features)
+## ✨ Key Features
 
-* **무한 캔버스 지원**: 화면의 제약 없이 4000px 이상의 넓은 캔버스에서 스크롤하며 자유롭게 작업할 수 있습니다.
-* **직관적인 노드 생성**: 단축키와 마우스 클릭만으로 원하는 위치에 즉시 에이전트 박스를 생성합니다.
-* **인라인 텍스트 편집**: 박스를 더블클릭하여 에이전트의 이름이나 역할을 즉시 수정할 수 있습니다.
-* **1:N 다중 선 연결 (Routing)**: 직교 라우팅(Manhattan Routing) 스타일의 SVG 선을 지원하며, 하나의 출력(Out) 포트에서 여러 노드의 입력(In) 포트로 분기되는 흐름을 쉽게 그릴 수 있습니다.
-* **안전한 삭제 방어막**: 단축키 기반의 삭제 모드(시각적 호버 효과 제공)를 지원하며, 노드 삭제 시 연결된 고립선(Orphan edges)들을 자동으로 함께 정리합니다. 코어 노드(Start, End)는 삭제되지 않도록 보호됩니다.
+* **Infinite Canvas Support:** Work freely without screen constraints, scrolling across a vast canvas of 4000px or more.
+* **Intuitive Node Creation:** Instantly create agent boxes at desired locations using simple shortcuts and mouse clicks.
+* **Inline Text Editing:** Double-click a box to immediately edit the agent's name or role.
+* **1:N Multiple Connections (Routing):** Supports orthogonal routing (Manhattan Routing) style SVG lines, easily drawing branched flows from a single Out-port to multiple In-ports.
+* **Safe Deletion Guard:** Supports a shortcut-based deletion mode (with visual hover effects). When a node is deleted, its connected orphan edges are automatically cleaned up. Core nodes (Start, End) are protected from deletion.
 
-## 🚀 사용 방법 (How to Use)
+## 🚀 How to Use
 
-별도의 `npm install`이나 빌드 과정이 필요하지 않습니다.
+No separate `npm install` or build process is required.
 
-1. `index.html` 파일을 다운로드합니다.
-2. Chrome, Safari, Edge 등 최신 웹 브라우저로 해당 파일을 엽니다.
-3. 아래의 조작법에 따라 다이어그램을 그립니다.
+1.  Download the `index.html` file.
+2.  Open the file in a modern web browser like Chrome, Safari, or Edge.
+3.  Draw your diagram according to the controls below.
 
-### ⌨️ 단축키 및 조작 가이드
+### ⌨️ Shortcuts & Control Guide
 
-| 액션 | 조작 방법 | 설명 |
+| Action | Control Method | Description |
 | :--- | :--- | :--- |
-| **노드 생성** | `Ctrl` (또는 Mac `Cmd ⌘`) + 빈 화면 클릭 | 클릭한 위치에 새로운 에이전트 박스를 생성합니다. |
-| **이름 변경** | 노드 더블클릭 | 텍스트 편집 모드로 진입합니다. `Enter`를 누르거나 바탕을 클릭하면 저장됩니다. |
-| **노드 이동** | 노드 드래그 앤 드롭 | 화면 내에서 자유롭게 위치를 이동시킵니다. 연결된 선도 실시간으로 따라갑니다. |
-| **선 연결** | 아래쪽 점(Out) ➔ 위쪽 점(In) 드래그 | 출발지 노드의 하단 포트에서 도착지 노드의 상단 포트로 마우스를 끌어 선을 연결합니다. |
-| **요소 삭제** | `Ctrl` (또는 Mac `Cmd ⌘`) + 노드/선 클릭 | 삭제 모드가 활성화되어 대상이 붉게 변하며, 클릭 시 확인 창과 함께 삭제됩니다. |
+| **Create Node** | `Ctrl` (or Mac `Cmd ⌘`) + Click empty space | Creates a new agent box at the clicked location. |
+| **Rename** | Double-click node | Enters text editing mode. Press `Enter` or click the background to save. |
+| **Move Node** | Drag and drop node | Freely moves the node within the screen. Connected lines follow in real-time. |
+| **Connect Line** | Drag from bottom dot (Out) ➔ top dot (In) | Drags the mouse from the source node's bottom port to the target node's top port to connect a line. |
+| **Delete Element** | `Ctrl` (or Mac `Cmd ⌘`) + Click node/line | Activates deletion mode (target turns red), and deletes the element with a confirmation prompt upon clicking. |
 
-## 🏗️ 아키텍처 및 기술 스택
+## 🏗️ Architecture & Tech Stack
 
 * **Frontend:** HTML5, CSS3, Vanilla JavaScript (ES6+)
 * **Rendering:** DOM Elements (Nodes), SVG `<path>` (Edges)
-* **Backend (진행 예정):** Python FastAPI
-* **AI Engine (진행 예정):** AWS Bedrock (Claude 3 Sonnet)
+* **Backend (Planned):** Python FastAPI
+* **AI Engine (Planned):** AWS Bedrock (Claude 3 Sonnet)
 
-## 🔜 향후 계획 (Roadmap)
+## 🔜 Roadmap
 
-- [x] 바닐라 JS 기반의 드래그 앤 드롭 캔버스 엔진 구현
-- [x] SVG 직교 연결선 알고리즘 및 노드 의존성 관리 로직 적용
-- [x] UX 개선 (단축키 삭제, 인라인 수정, 캔버스 확장 등)
-- [ ] **Python FastAPI 서버 연동 (진행 중):** 화면의 JSON 상태값(`nodes`, `edges`)을 백엔드로 전송
-- [ ] **AWS Bedrock 파이프라인 구축:** JSON을 파싱하여 ASCII 다이어그램이 포함된 `architecture.md` 문서 자동 생성
-
----
+- [x] Implement Vanilla JS-based drag-and-drop canvas engine
+- [x] Apply SVG orthogonal routing algorithm and node dependency management logic
+- [x] UX improvements (shortcut deletion, inline editing, canvas expansion, etc.)
+- [ ] **Python FastAPI server integration (In Progress):** Send on-screen JSON state (`nodes`, `edges`) to the backend
+- [ ] **AWS Bedrock pipeline construction:** Parse JSON to automatically generate an `architecture.md` document including ASCII diagrams
