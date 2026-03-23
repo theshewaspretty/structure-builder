@@ -1,3 +1,4 @@
+
 # main.py
 import json
 import logging
@@ -30,10 +31,9 @@ app.add_middleware(
 
 # --- 2. AWS Bedrock 클라이언트 설정 (.env 적용) ---
 try:
-    # os.getenv를 통해 .env 파일의 값을 안전하게 주입합니다.
     bedrock_client = boto3.client(
         service_name='bedrock-runtime', 
-        region_name=os.getenv("AWS_REGION"),
+        region_name=os.getenv("AWS_REGION", "ap-northeast-2"),
         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
     )
@@ -43,13 +43,13 @@ except Exception as e:
 
 # --- 3. 데이터 모델 ---
 class Node(BaseModel):
-    id: str = Field(..., description="에이전트 노드의 고유 ID")
-    label: str = Field(..., description="사용자가 지정한 에이전트 이름")
+    id: str = Field(..., description="에이전트 고유 ID")
+    label: str = Field(..., description="에이전트 이름")
+    tools: List[str] = Field(default_factory=list, description="할당된 MCP 도구 목록") # 도구 속성 추가
 
 class Edge(BaseModel):
-    from_node: str = Field(..., alias="from", description="출발지 노드 ID")
-    to_node: str = Field(..., alias="to", description="도착지 노드 ID")
-    
+    from_node: str = Field(..., alias="from")
+    to_node: str = Field(..., alias="to")
     class Config:
         populate_by_name = True
 
@@ -58,18 +58,26 @@ class FlowData(BaseModel):
     edges: List[Edge]
 
 class ExportResponse(BaseModel):
-    markdown: str
+    markdown: str  # 프론트엔드가 파일로 저장할 단일 Markdown 문자열
 
-# --- 4. 시스템 프롬프트 ---
+# --- 4. 시스템 프롬프트 (명령어 자체 내장) ---
 AGENT_MISSION = """
 당신은 시스템 아키텍처와 데이터 플로우를 분석하여 구조화된 마크다운(.md) 문서를 생성하는 엘리트 Software Architecture Agent입니다.
 
-[임무]
-1. 사용자가 제공하는 노드(Nodes)와 연결선(Edges)의 JSON 위상 데이터를 분석하십시오.
-2. 데이터의 흐름과 1:N 분기 처리 로직을 완벽하게 이해하십시오.
-3. 'Workflow Architecture Diagram' 이라는 제목 아래에 매우 정교하고 직관적인 **ASCII Art Flow 다이어그램**을 반드시 포함해야 합니다.
-4. ASCII 다이어그램은 단순한 수직 나열이 아닌, 여러 갈래로 뻗어나가는 복잡한 분기를 ┌, ┐, └, ┘, ├, ┤, │, ─, ▼ 등의 문자를 활용하여 정확하게 렌더링해야 합니다.
-5. 다른 AI 에이전트나 개발자가 이 문서만 보고도 시스템 구조를 100% 재현할 수 있도록 논리적으로 작성하십시오.
+[핵심 임무]
+1. 사용자가 제공하는 노드(Nodes)와 연결선(Edges) 데이터를 분석하여 아키텍처 문서를 작성하십시오. 노드에 MCP tools가 할당되어 있다면, 해당 에이전트가 어떤 도구를 사용하는지도 명시하십시오.
+2. 데이터의 흐름과 1:N 분기 처리 로직을 이해하여 직관적인 **ASCII Art Flow 다이어그램**을 그리십시오.
+3. 분석된 아키텍처를 바탕으로 실제 프로젝트의 **폴더 및 파일 구조 트리(ASCII 형태)**를 문서 내에 포함하십시오.
+   - 폴더 트리 구조 규칙:
+     - Agent/
+       - Agent_groups/ (Start, End를 제외한 실제 에이전트 .py 파일)
+       - Agent_instructions/ (모든 노드의 .txt 페르소나 파일)
+       - main.py
+4. **[가장 중요한 임무] 문서의 맨 마지막 섹션에**, 위에서 정의한 폴더와 파일을 사용자의 로컬 OS 환경에서 한 번에 생성할 수 있는 CLI 명령어를 **코드 블록(Code block)** 형태로 반드시 포함하십시오.
+   - Windows (PowerShell) 환경을 위한 명령어 (예: New-Item 사용)
+   - macOS / Linux (Bash) 환경을 위한 명령어 (예: mkdir, touch 사용)
+
+출력은 어떠한 JSON 래핑 없이 **오직 순수한 Markdown 텍스트**로만 응답하십시오.
 """
 
 # --- 5. API 엔드포인트 ---
@@ -82,7 +90,7 @@ async def generate_architecture_documentation(data: FlowData):
 
     user_content = f"""
     다음은 UI 캔버스에서 구성된 Agent 워크플로우의 JSON 데이터입니다.
-    이를 바탕으로 완벽한 ASCII 아키텍처 다이어그램이 포함된 문서를 생성해 주십시오.
+    이 데이터를 기반으로 아키텍처 다이어그램, 폴더 구조 트리, 그리고 파일 자동 생성 OS 커맨드를 모두 포함하는 하나의 마크다운 문서를 작성해주세요.
 
     [Input Flow Topology JSON]
     Nodes:
@@ -92,7 +100,6 @@ async def generate_architecture_documentation(data: FlowData):
     {json.dumps(edges_dict, ensure_ascii=False, indent=2)}
     """
 
-    # .env에서 모델 ID를 동적으로 가져옵니다.
     model_id = os.getenv("BEDROCK_MODEL_ID")
 
     body = json.dumps({
@@ -114,14 +121,14 @@ async def generate_architecture_documentation(data: FlowData):
         )
         
         response_body = json.loads(response.get('body').read())
+        # 순수 마크다운 텍스트 결과만 추출
         generated_md = response_body.get('content')[0].get('text')
         
         logger.info(f"✅ Bedrock 문서 생성 완료 (사용 모델: {model_id}).")
+        
+        # 단일 마크다운 문자열 반환 (프론트엔드에서 바로 .md 로 저장됨)
         return ExportResponse(markdown=generated_md)
 
-    except bedrock_client.exceptions.AccessDeniedException:
-        logger.error("❌ AWS Bedrock 접근 권한이 없습니다.")
-        raise HTTPException(status_code=403, detail="AWS Access Denied. IAM 권한과 키를 확인하세요.")
     except Exception as e:
         logger.error(f"❌ Bedrock 호출 중 오류 발생: {e}")
         raise HTTPException(status_code=500, detail=str(e))
