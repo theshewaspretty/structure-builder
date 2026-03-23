@@ -2,95 +2,143 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <title>structure builder for markdown</title>
+  <title>AI Agent Builder Canvas - Responsive & DND</title>
   <style>
-    /* 1. 캔버스와 도화지를 확실한 4000px 크기로 강제 고정 (버그 수정됨) */
-    body { margin: 0; padding: 0; background-color: #f4f4f4; overflow: auto; font-family: sans-serif; }
-    #canvas { width: 4000px; height: 4000px; position: relative; background-color: #f4f4f4; }
+    /* 전체 화면을 Flex로 구성하여 반응형 레이아웃 구현 */
+    body { margin: 0; padding: 0; background-color: #f4f4f4; font-family: sans-serif; overflow: hidden; display: flex; height: 100vh; width: 100vw; }
     
-    /* SVG 레이어: 선이 잘려보이지 않도록 100% (4000px) 꽉 채움 */
+    /* ====== 좌측 네비게이션 (MCP Tools) ====== */
+    #side-nav {
+      width: 0; flex-shrink: 0; background-color: #ffffff; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 15;
+      transition: width 0.3s ease; display: flex; flex-direction: column; overflow: hidden;
+    }
+    #side-nav.open { width: 280px; } /* 열렸을 때 너비 확보 (캔버스를 우측으로 밀어냄) */
+    
+    .nav-header { padding: 80px 20px 20px 20px; background-color: #f8f9fa; border-bottom: 1px solid #ddd; font-weight: bold; font-size: 18px; color: #333; min-width: 240px;}
+    .tool-list { padding: 20px; list-style: none; margin: 0; overflow-y: auto; flex: 1; min-width: 240px; }
+    
+    /* 드래그 가능한 도구 아이템 */
+    .tool-item {
+      background-color: #e3f2fd; color: #1976d2; padding: 12px; margin-bottom: 10px;
+      border-radius: 6px; font-size: 14px; font-weight: bold; border: 1px solid #bbdefb;
+      cursor: grab; transition: background-color 0.2s;
+    }
+    .tool-item:hover { background-color: #bbdefb; }
+    .tool-item:active { cursor: grabbing; }
+    .tool-desc { display: block; font-size: 11px; color: #555; font-weight: normal; margin-top: 4px; pointer-events: none; }
+
+    /* ====== 메인 캔버스 래퍼 ====== */
+    #main-wrapper { flex-grow: 1; position: relative; overflow: auto; transition: width 0.3s; }
+    #canvas { width: 4000px; height: 4000px; position: relative; background-color: #f4f4f4; }
     #svg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
     
-    /* 연결선 스타일 */
-    .edge-path { pointer-events: visibleStroke; cursor: pointer; transition: stroke 0.2s, stroke-width 0.2s; }
-    .edge-path:hover { stroke: #d32f2f !important; stroke-width: 4 !important; }
+    /* UI 요소들 (고정) */
+    #nav-toggle-btn {
+      position: fixed; top: 20px; left: 20px; z-index: 20;
+      background-color: #333; color: white; border: none; padding: 10px 15px;
+      font-size: 18px; border-radius: 5px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    .top-controls { position: fixed; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 10; }
+    .btn { color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 5px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+    #export-btn { background-color: #1976d2; }
+    #export-btn:hover { background-color: #115293; }
+    #export-btn:disabled { background-color: #999; cursor: not-allowed; }
+    #reset-btn { background-color: #d32f2f; }
+    #reset-btn:hover { background-color: #9a0007; }
+    #help-text {
+      position: fixed; bottom: 20px; left: 20px; background-color: rgba(0,0,0,0.8); color: white; padding: 12px 18px;
+      border-radius: 5px; pointer-events: none; font-size: 14px; z-index: 10; line-height: 1.6;
+    }
 
-    /* 기본 에이전트 노드 */
+    /* ====== 에이전트 박스 및 도구 아이콘 ====== */
     .agent-node {
       position: absolute; width: 180px; min-height: 60px;
       background-color: white; border: 2px solid #333; border-radius: 6px;
       cursor: grab; display: flex; align-items: center; justify-content: center; text-align: center;
       box-shadow: 2px 2px 5px rgba(0,0,0,0.1); user-select: none; z-index: 2;
-      font-weight: bold; font-size: 14px; padding: 10px; box-sizing: border-box;
-      transition: border-color 0.2s;
+      font-weight: bold; font-size: 14px; padding: 10px; box-sizing: border-box; transition: border-color 0.2s;
     }
     .agent-node:active { cursor: grabbing; box-shadow: 4px 4px 10px rgba(0,0,0,0.15); }
     .agent-node[contenteditable="true"] { cursor: text; border-color: #1976d2; outline: none; background-color: #e3f2fd; }
-    
-    /* 박스 삭제 피드백 */
     .agent-node.delete-ready:hover { border-color: #d32f2f; background-color: #ffebee; cursor: pointer; }
+    .agent-node.drag-over { border-color: #1976d2; background-color: #e3f2fd; border-style: dashed; } /* 도구 드롭 타겟 표시 */
     
-    /* 특수 노드 스타일 */
     .start-node { border-color: #2e7d32; background-color: #e8f5e9; color: #2e7d32; }
     .end-node { border-color: #c62828; background-color: #ffebee; color: #c62828; }
 
-    /* 포트(연결점) */
-    .port {
-      position: absolute; width: 12px; height: 12px;
-      background-color: white; border: 2px solid #555; border-radius: 50%;
-      cursor: crosshair; z-index: 3; transition: all 0.2s;
+    /* 추가된 도구들을 보여주는 컨테이너 (우측 상단) */
+    .tools-container {
+      position: absolute; top: -12px; right: -12px;
+      display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; width: 100%; pointer-events: none;
     }
+    /* 개별 도구 뱃지 */
+    .tool-badge {
+      background: white; border: 2px solid #1976d2; color: #1976d2;
+      border-radius: 50%; width: 24px; height: 24px; font-size: 12px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2); pointer-events: auto; background-color: #e3f2fd;
+    }
+
+    /* 포트 및 선 */
+    .port { position: absolute; width: 12px; height: 12px; background-color: white; border: 2px solid #555; border-radius: 50%; cursor: crosshair; z-index: 3; transition: all 0.2s; }
     .port:hover { background-color: #1976d2; border-color: #1976d2; transform: scale(1.3); }
     .port-in { top: -8px; left: calc(50% - 7px); } 
     .port-out { bottom: -8px; left: calc(50% - 7px); } 
-
-    /* UI 요소 (화면 스크롤을 내려도 항상 보이게 고정) */
-    #help-text {
-      position: fixed; bottom: 20px; left: 20px;
-      background-color: rgba(0,0,0,0.8); color: white; padding: 12px 18px;
-      border-radius: 5px; pointer-events: none; font-size: 14px; z-index: 10; line-height: 1.6;
-    }
-    
-    .top-controls { position: fixed; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 10; }
-    
-    .btn {
-      color: white; border: none; padding: 10px 20px;
-      font-size: 14px; font-weight: bold; border-radius: 5px; cursor: pointer;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    }
-    #export-btn { background-color: #1976d2; }
-    #export-btn:hover { background-color: #115293; }
-    #export-btn:disabled { background-color: #999; cursor: not-allowed; }
-    
-    #reset-btn { background-color: #d32f2f; }
-    #reset-btn:hover { background-color: #9a0007; }
+    .edge-path { pointer-events: visibleStroke; cursor: pointer; transition: stroke 0.2s, stroke-width 0.2s; }
+    .edge-path:hover { stroke: #d32f2f !important; stroke-width: 4 !important; }
   </style>
 </head>
 <body>
 
-  <div class="top-controls">
-    <button id="reset-btn" class="btn">Reset Canvas</button>
-    <button id="export-btn" class="btn">Export to MD</button>
-  </div>
-  
-  <div id="help-text">
-    [조작 방법]<br>
-    - <b>박스 생성</b>: Mac Cmd(⌘) 또는 Ctrl + 빈 화면 클릭<br>
-    - <b>이름 변경</b>: 박스 더블클릭 (Enter로 저장)<br>
-    - <b>선 연결</b>: 아래쪽 점(Out) ➔ 다른 박스 위쪽 점(In)으로 드래그<br>
-    - <b>선/박스 삭제</b>: Mac Cmd(⌘) 또는 Ctrl + 선/박스 클릭
+  <button id="nav-toggle-btn">☰ Tools</button>
+
+  <div id="side-nav">
+    <div class="nav-header">MCP Tools Library</div>
+    <ul class="tool-list">
+      <li class="tool-item" draggable="true" data-icon="🔍" data-tool="Web Search">
+        🔍 Web Search (MCP)
+        <span class="tool-desc">인터넷에서 최신 정보를 검색합니다.</span>
+      </li>
+      <li class="tool-item" draggable="true" data-icon="📁" data-tool="Local File Read">
+        📁 Local File Read (MCP)
+        <span class="tool-desc">로컬 시스템의 파일을 읽어옵니다.</span>
+      </li>
+      <li class="tool-item" draggable="true" data-icon="💾" data-tool="Database Query">
+        💾 Database Query (MCP)
+        <span class="tool-desc">내부 DB에 SQL을 실행하여 데이터를 조회합니다.</span>
+      </li>
+      <li class="tool-item" draggable="true" data-icon="☁️" data-tool="AWS S3 Fetch">
+        ☁️ AWS S3 Fetch (MCP)
+        <span class="tool-desc">클라우드 스토리지에서 객체를 가져옵니다.</span>
+      </li>
+    </ul>
   </div>
 
-  <div id="canvas">
-    <svg id="svg-layer">
-      <defs>
-        <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-          <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
-        </marker>
-      </defs>
-      <g id="edges-group"></g>
-      <path id="temp-path" stroke="#1976d2" stroke-width="2" fill="none" stroke-dasharray="5,5" display="none" />
-    </svg>
+  <div id="main-wrapper">
+    <div class="top-controls">
+      <button id="reset-btn" class="btn">Reset Canvas</button>
+      <button id="export-btn" class="btn">Export to MD</button>
+    </div>
+    
+    <div id="help-text">
+      [조작 방법]<br>
+      - <b>박스 생성</b>: Mac Cmd(⌘)/Ctrl + 빈 화면 클릭<br>
+      - <b>도구 추가</b>: Tools 메뉴에서 항목을 박스 위로 드래그<br>
+      - <b>선 연결</b>: 아래쪽 점(Out) ➔ 다른 박스 위쪽 점(In)<br>
+      - <b>요소 삭제</b>: Mac Cmd(⌘)/Ctrl + 노드/선 클릭
+    </div>
+
+    <div id="canvas">
+      <svg id="svg-layer">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#333" />
+          </marker>
+        </defs>
+        <g id="edges-group"></g>
+        <path id="temp-path" stroke="#1976d2" stroke-width="2" fill="none" stroke-dasharray="5,5" display="none" />
+      </svg>
+    </div>
   </div>
 
   <script>
@@ -99,12 +147,27 @@
     const edgesGroup = document.getElementById('edges-group');
     const exportBtn = document.getElementById('export-btn');
     const resetBtn = document.getElementById('reset-btn');
+    const navToggleBtn = document.getElementById('nav-toggle-btn');
+    const sideNav = document.getElementById('side-nav');
+    const mainWrapper = document.getElementById('main-wrapper');
     
     let nodeIdCounter = 1;
     let nodesData = []; 
     let edgesData = []; 
 
-    // 삭제 모드 시각적 효과 (Ctrl/Cmd 키 다운 감지)
+    // 네비게이션 토글 이벤트 (반응형 밀어내기)
+    navToggleBtn.addEventListener('click', () => {
+      sideNav.classList.toggle('open');
+    });
+
+    // 도구(MCP) 드래그 시작 이벤트
+    document.querySelectorAll('.tool-item').forEach(item => {
+      item.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('icon', item.dataset.icon);
+        e.dataTransfer.setData('tool', item.dataset.tool);
+      });
+    });
+
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey || e.metaKey) document.querySelectorAll('.agent-node').forEach(el => el.classList.add('delete-ready'));
     });
@@ -112,20 +175,18 @@
       if (!e.ctrlKey && !e.metaKey) document.querySelectorAll('.agent-node').forEach(el => el.classList.remove('delete-ready'));
     });
 
-    // --- 1. 새 박스 생성 (강력한 클릭 감지 로직으로 수정됨) ---
-    // canvas 밖을 누르든 안을 누르든, 클릭한 곳이 '빈 공간'이면 박스 생성
-    document.addEventListener('mousedown', (e) => {
+    // 박스 생성
+    mainWrapper.addEventListener('mousedown', (e) => {
       if ((e.ctrlKey || e.metaKey)) {
-        // 클릭한 곳이 기존 박스(agent-node)나 버튼(btn)이 아닐 때만 실행
         if (!e.target.closest('.agent-node') && !e.target.closest('.btn')) {
-          const x = e.pageX - 90; 
-          const y = e.pageY - 30; 
-          createNode(x, y, `[Agent ${nodeIdCounter}]`, true, true, null);
+          // mainWrapper의 스크롤 위치를 반영하여 좌표 계산
+          const x = e.pageX - mainWrapper.getBoundingClientRect().left + mainWrapper.scrollLeft - 90; 
+          const y = e.pageY - mainWrapper.getBoundingClientRect().top + mainWrapper.scrollTop - 30; 
+          createNode(x, y, `Agent ${nodeIdCounter}`, true, true, null);
         }
       }
     });
 
-    // --- 2. 노드 생성 로직 ---
     function createNode(x, y, label, hasInPort, hasOutPort, customClass) {
       let nodeId = customClass ? label.toLowerCase() : `node_${nodeIdCounter++}`;
 
@@ -138,68 +199,101 @@
       nodeEl.style.top = `${y}px`;
       nodeEl.innerText = label;
 
-      const nodeData = { id: nodeId, el: nodeEl, x, y, label };
+      // 노드 데이터에 tools 배열 추가
+      const nodeData = { id: nodeId, el: nodeEl, x, y, label, tools: [] };
 
-      // --- 박스 삭제 기능 ---
+      // --- 2. 드래그 앤 드롭 (도구 추가) 수신 로직 ---
+      nodeEl.addEventListener('dragover', (e) => {
+        e.preventDefault(); // 드롭 허용
+        nodeEl.classList.add('drag-over');
+      });
+      nodeEl.addEventListener('dragleave', () => {
+        nodeEl.classList.remove('drag-over');
+      });
+      nodeEl.addEventListener('drop', (e) => {
+        e.preventDefault();
+        nodeEl.classList.remove('drag-over');
+        
+        const icon = e.dataTransfer.getData('icon');
+        const toolName = e.dataTransfer.getData('tool');
+        
+        if (icon && toolName) {
+          // 중복 추가 방지
+          if (!nodeData.tools.includes(toolName)) {
+            nodeData.tools.push(toolName);
+            
+            // 뱃지 컨테이너가 없으면 생성
+            let toolsContainer = nodeEl.querySelector('.tools-container');
+            if (!toolsContainer) {
+              toolsContainer = document.createElement('div');
+              toolsContainer.className = 'tools-container';
+              nodeEl.appendChild(toolsContainer);
+            }
+            
+            // 뱃지 아이콘 생성
+            const badge = document.createElement('div');
+            badge.className = 'tool-badge';
+            badge.innerText = icon;
+            badge.title = toolName; // 마우스를 올리면 툴 이름 표시
+            toolsContainer.appendChild(badge);
+          }
+        }
+      });
+
+      // 삭제
       nodeEl.addEventListener('mousedown', (e) => {
         if (e.ctrlKey || e.metaKey) {
           e.stopPropagation(); 
-          
           if (nodeId === 'start_node' || nodeId === 'end_node') {
-            alert("시작(Start)과 종료(End) 노드는 삭제할 수 없습니다.");
+            alert("Start와 End 노드는 삭제할 수 없습니다.");
             return;
           }
-
-          if (confirm("이 에이전트 박스를 삭제하겠습니까? (연결된 선도 함께 삭제됩니다)")) {
-            nodeEl.remove(); // HTML 요소 삭제
-            nodesData = nodesData.filter(n => n.id !== nodeId); // 배열에서 삭제
-            
-            // 연결된 모든 선 삭제
+          if (confirm("이 에이전트 박스를 삭제하겠습니까?")) {
+            nodeEl.remove(); 
+            nodesData = nodesData.filter(n => n.id !== nodeId); 
             const edgesToRemove = edgesData.filter(edge => edge.fromId === nodeId || edge.toId === nodeId);
-            edgesToRemove.forEach(edge => {
-              edge.pathEl.remove();
-            });
+            edgesToRemove.forEach(edge => edge.pathEl.remove());
             edgesData = edgesData.filter(edge => edge.fromId !== nodeId && edge.toId !== nodeId);
           }
         }
       });
 
-      // 더블클릭 이름 변경
+      // 이름 변경 (Start, End 불가)
       nodeEl.addEventListener('dblclick', (e) => {
         e.stopPropagation(); 
+        if (nodeId === 'start_node' || nodeId === 'end_node') {
+            alert("Start 노드와 End 노드의 이름은 변경할 수 없습니다.");
+            return;
+        }
         nodeEl.setAttribute('contenteditable', 'true');
         nodeEl.focus();
         document.execCommand('selectAll', false, null);
       });
-
       nodeEl.addEventListener('blur', () => {
-        nodeEl.setAttribute('contenteditable', 'false');
-        nodeData.label = nodeEl.innerText; 
-      });
-      nodeEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          nodeEl.blur();
+        if (nodeEl.getAttribute('contenteditable') === 'true') {
+            nodeEl.setAttribute('contenteditable', 'false');
+            // 툴 컨테이너와 포트를 제외한 순수 텍스트만 라벨로 저장
+            nodeData.label = Array.from(nodeEl.childNodes)
+                                .filter(n => n.nodeType === Node.TEXT_NODE)
+                                .map(n => n.textContent).join('').trim();
         }
       });
+      nodeEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); nodeEl.blur(); }
+      });
 
-      // 위/아래 포트 생성
+      // 포트 생성
       if (hasInPort) {
         const portIn = document.createElement('div');
         portIn.className = 'port port-in';
-        portIn.dataset.nodeId = nodeId;
-        portIn.dataset.type = 'in';
-        nodeEl.appendChild(portIn);
-        nodeData.portIn = portIn;
+        portIn.dataset.nodeId = nodeId; portIn.dataset.type = 'in';
+        nodeEl.appendChild(portIn); nodeData.portIn = portIn;
       }
-
       if (hasOutPort) {
         const portOut = document.createElement('div');
         portOut.className = 'port port-out';
-        portOut.dataset.nodeId = nodeId;
-        portOut.dataset.type = 'out';
-        nodeEl.appendChild(portOut);
-        nodeData.portOut = portOut;
+        portOut.dataset.nodeId = nodeId; portOut.dataset.type = 'out';
+        nodeEl.appendChild(portOut); nodeData.portOut = portOut;
         makeConnectable(portOut, 'out'); 
       }
 
@@ -208,80 +302,65 @@
       makeDraggable(nodeData);
     }
 
-    // --- 3. 드래그 앤 드롭 ---
+    // 드래그 (래퍼 스크롤 반영)
     function makeDraggable(nodeData) {
-      let isDragging = false;
-      let offX, offY;
-
+      let isDragging = false, offX, offY;
       nodeData.el.addEventListener('mousedown', (e) => {
         if (e.target.classList.contains('port') || nodeData.el.getAttribute('contenteditable') === 'true' || (e.ctrlKey || e.metaKey)) return; 
-        
         isDragging = true;
         nodeData.el.style.zIndex = 4;
-        offX = e.pageX - nodeData.el.offsetLeft;
-        offY = e.pageY - nodeData.el.offsetTop;
+        offX = e.pageX - mainWrapper.getBoundingClientRect().left + mainWrapper.scrollLeft - nodeData.el.offsetLeft;
+        offY = e.pageY - mainWrapper.getBoundingClientRect().top + mainWrapper.scrollTop - nodeData.el.offsetTop;
       });
-
       document.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
-        const x = e.pageX - offX;
-        const y = e.pageY - offY;
-        nodeData.el.style.left = `${x}px`;
-        nodeData.el.style.top = `${y}px`;
-        nodeData.x = x;
-        nodeData.y = y;
+        const x = e.pageX - mainWrapper.getBoundingClientRect().left + mainWrapper.scrollLeft - offX;
+        const y = e.pageY - mainWrapper.getBoundingClientRect().top + mainWrapper.scrollTop - offY;
+        nodeData.el.style.left = `${x}px`; nodeData.el.style.top = `${y}px`;
+        nodeData.x = x; nodeData.y = y;
         updateEdges(nodeData.id); 
       });
-
       document.addEventListener('mouseup', () => {
         if (!isDragging) return;
-        isDragging = false;
-        nodeData.el.style.zIndex = 2;
+        isDragging = false; nodeData.el.style.zIndex = 2;
       });
     }
 
-    // --- 4. 선 연결 및 삭제 로직 ---
-    let isDrawingLine = false;
-    let startPortData = null;
+    // 선 연결
+    let isDrawingLine = false, startPortData = null;
 
     function makeConnectable(portEl, type) {
       portEl.addEventListener('mousedown', (e) => {
         if (type !== 'out' || (e.ctrlKey || e.metaKey)) return; 
         e.stopPropagation(); 
-        
         isDrawingLine = true;
         startPortData = { nodeId: portEl.dataset.nodeId, type: type, el: portEl };
-
         const rect = portEl.getBoundingClientRect();
-        // 절대 좌표 계산 (스크롤 대비)
-        const startX = rect.left + rect.width / 2 + window.scrollX;
-        const startY = rect.top + rect.height / 2 + window.scrollY;
+        const startX = rect.left - canvas.getBoundingClientRect().left;
+        const startY = rect.top - canvas.getBoundingClientRect().top + rect.height / 2;
         tempPath.setAttribute('d', `M ${startX} ${startY} L ${startX} ${startY}`);
         tempPath.style.display = 'block';
       });
     }
 
-    document.addEventListener('mousemove', (e) => {
+    mainWrapper.addEventListener('mousemove', (e) => {
       if (!isDrawingLine) return;
       const d = tempPath.getAttribute('d');
       if (!d) return;
       const parts = d.split(' ');
-      tempPath.setAttribute('d', `${parts[0]} ${parts[1]} ${parts[2]} L ${e.pageX} ${e.pageY}`);
+      const mouseX = e.pageX - canvas.getBoundingClientRect().left;
+      const mouseY = e.pageY - canvas.getBoundingClientRect().top;
+      tempPath.setAttribute('d', `${parts[0]} ${parts[1]} ${parts[2]} L ${mouseX} ${mouseY}`);
     });
 
     document.addEventListener('mouseup', (e) => {
       if (!isDrawingLine) return;
-      isDrawingLine = false;
-      tempPath.style.display = 'none';
-
+      isDrawingLine = false; tempPath.style.display = 'none';
       const targetPortEl = e.target;
       if (targetPortEl && targetPortEl.classList.contains('port-in')) {
         const fromNodeId = startPortData.nodeId;
         const toNodeId = targetPortEl.dataset.nodeId;
-        
-        if(fromNodeId !== toNodeId) {
-            createEdge(fromNodeId, toNodeId);
-        }
+        if(fromNodeId !== toNodeId) createEdge(fromNodeId, toNodeId);
       }
       startPortData = null;
     });
@@ -291,24 +370,18 @@
       if (edgesData.find(e => e.fromId === fromId && e.toId === toId)) return;
 
       const pathEl = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      pathEl.id = edgeId;
-      pathEl.setAttribute('stroke', '#333');
-      pathEl.setAttribute('stroke-width', '2');
-      pathEl.setAttribute('fill', 'none');
-      pathEl.setAttribute('marker-end', 'url(#arrowhead)'); 
-      pathEl.classList.add('edge-path'); 
+      pathEl.id = edgeId; pathEl.setAttribute('stroke', '#333');
+      pathEl.setAttribute('stroke-width', '2'); pathEl.setAttribute('fill', 'none');
+      pathEl.setAttribute('marker-end', 'url(#arrowhead)'); pathEl.classList.add('edge-path'); 
 
-      // --- 특정 선 삭제 기능 ---
       pathEl.addEventListener('mousedown', (e) => {
         if (e.ctrlKey || e.metaKey) {
           e.stopPropagation();
           if (confirm("이 연결선을 삭제하겠습니까?")) {
-            pathEl.remove(); 
-            edgesData = edgesData.filter(edge => edge.id !== edgeId); 
+            pathEl.remove(); edgesData = edgesData.filter(edge => edge.id !== edgeId); 
           }
         }
       });
-
       edgesGroup.appendChild(pathEl);
       edgesData.push({ id: edgeId, fromId, toId, pathEl });
       drawEdgePath(fromId, toId, pathEl);
@@ -322,41 +395,37 @@
     function drawEdgePath(fromId, toId, pathEl) {
       const fromNode = nodesData.find(n => n.id === fromId);
       const toNode = nodesData.find(n => n.id === toId);
-
+      
       const outRect = fromNode.portOut.getBoundingClientRect();
       const inRect = toNode.portIn.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
 
-      const x1 = outRect.left + outRect.width / 2 + window.scrollX;
-      const y1 = outRect.top + outRect.height / 2 + window.scrollY;
-      const x2 = inRect.left + inRect.width / 2 + window.scrollX;
-      const y2 = inRect.top + inRect.height / 2 + window.scrollY;
+      const x1 = outRect.left - canvasRect.left + outRect.width / 2;
+      const y1 = outRect.top - canvasRect.top + outRect.height / 2;
+      const x2 = inRect.left - canvasRect.left + inRect.width / 2;
+      const y2 = inRect.top - canvasRect.top + inRect.height / 2;
 
       const midY = y1 + (y2 - y1) / 2;
       pathEl.setAttribute('d', `M ${x1} ${y1} V ${midY} H ${x2} V ${y2}`);
     }
 
-    // --- 5. 다이어그램 초기화(Reset) ---
     resetBtn.addEventListener('click', () => {
-      if (confirm("모든 다이어그램을 지우고 초기화하시겠습니까? (이 작업은 되돌릴 수 없습니다)")) {
-        nodesData = [];
-        edgesData = [];
-        nodeIdCounter = 1;
-        
+      if (confirm("모든 다이어그램을 초기화하시겠습니까?")) {
+        nodesData = []; edgesData = []; nodeIdCounter = 1;
         document.querySelectorAll('.agent-node').forEach(el => el.remove());
-        edgesGroup.innerHTML = ''; 
-
-        initNodes();
+        edgesGroup.innerHTML = ''; initNodes();
       }
     });
 
-    // --- 6. Export 기능 ---
     exportBtn.addEventListener('click', async () => {
       if (edgesData.length === 0) {
         alert("연결된 선이 없습니다. 노드를 먼저 연결해주세요.");
         return;
       }
+      
+      // tools 데이터까지 백엔드로 전송
       const payload = {
-        nodes: nodesData.map(n => ({ id: n.id, label: n.label })),
+        nodes: nodesData.map(n => ({ id: n.id, label: n.label, tools: n.tools })),
         edges: edgesData.map(e => ({ from: e.fromId, to: e.toId }))
       };
       exportBtn.innerText = "Agent 작동 중...";
@@ -370,8 +439,7 @@
         });
         if (!response.ok) throw new Error("서버 통신 오류");
         const result = await response.json();
-        if (result.error) { alert("Bedrock API 에러: " + result.error); return; }
-
+        
         const blob = new Blob([result.markdown], { type: 'text/markdown' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -379,23 +447,22 @@
         document.body.appendChild(a); a.click();
         document.body.removeChild(a); URL.revokeObjectURL(url);
       } catch (error) {
-        console.error(error);
-        alert("백엔드 서버(FastAPI)에 연결할 수 없습니다. 파이썬 서버가 실행 중인지 확인해주세요.");
+        alert("백엔드 서버(FastAPI)에 연결할 수 없습니다.");
       } finally {
         exportBtn.innerText = "Export to MD";
         exportBtn.disabled = false;
       }
     });
 
-    // --- 초기화 함수 ---
     function initNodes() {
-      const centerX = window.innerWidth / 2 - 90;
-      createNode(centerX, 50, 'Start_node', false, true, 'start-node');
-      createNode(centerX, window.innerHeight - 150, 'End_node', true, false, 'end-node');
+      // 넓은 캔버스의 임의의 중앙 상단에 시작 노드 배치
+      createNode(1910, 50, 'Start_node', false, true, 'start-node');
+      createNode(1910, 800, 'End_node', true, false, 'end-node');
+      // 시작 시 캔버스를 중앙으로 스크롤 이동
+      mainWrapper.scrollLeft = 1400;
     }
 
     initNodes();
-
   </script>
 </body>
 </html>
